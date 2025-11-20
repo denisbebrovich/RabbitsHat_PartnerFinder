@@ -1,0 +1,13 @@
+# Открываем файл .gitignore и добавляем:
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv
+venv/
+node_modules/
+.docker/
+.vscode/
+.idea/
+.DS_Store
