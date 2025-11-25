@@ -2,14 +2,15 @@
 FROM python:3.9-slim-buster
 
 # Set the working directory in the container
-WORKDIR /app
+WORKDIR /fastapi
 
 # Copy the requirements file and install dependencies
-COPY requirements.txt .
+COPY ./fastapi/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the application code
-COPY ./app /app/app
+COPY ./fastapi/app ./app/
+COPY ./DB ./DB/
 
 # Expose the port FastAPI will run on
 EXPOSE 80
