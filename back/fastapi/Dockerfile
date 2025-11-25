@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the application code
 COPY ./fastapi/app ./app/
 COPY ./DB ./DB/
+COPY ./services/hh_etl.py ./services/
 
 # Expose the port FastAPI will run on
 EXPOSE 80
