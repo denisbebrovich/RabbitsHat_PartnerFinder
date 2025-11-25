@@ -17,7 +17,7 @@ from DB.models import Company, Vacancy
 
 
 class HHExtractor:
-    def __init__(self, db_url = 'postgresql://admin:password@localhost:5432/partner_finder'):
+    def __init__(self, db_url = 'postgresql://admin:password@postgres:5432/partner_finder'):
         self.db_engine = create_engine(db_url)
         self.Session = sessionmaker(bind = self.db_engine)
         self.base_url = 'https://api.hh.ru'
