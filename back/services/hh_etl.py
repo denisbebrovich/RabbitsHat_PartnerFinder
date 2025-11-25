@@ -183,7 +183,6 @@ class HHExtractor:
                     if not existing_company:
                         company = Company(**company_info)
                         session.add(company)
-                        session.flush()
                         companies_added += 1
                         print(f"Добавлена компания: {company_info['name']}")
                     
