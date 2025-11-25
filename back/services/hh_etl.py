@@ -110,7 +110,7 @@ class HHExtractor:
             'hh_id': str(vacancy_data['id']),
             'title': vacancy_data['name'],
             'company_id': str(vacancy_data['employer']['id']),
-            'description': vacancy_data.get('snippet', {}).get('responsibility', ''),
+            'description': vacancy_data.get('description'),
             'source': 'hh.ru',
             'requirements': skills,
             'experience': vacancy_data.get('experience', {}).get('name', ''),
@@ -138,7 +138,7 @@ class HHExtractor:
             company.tech_stack = unique_skills
             print(f"Обновлен стек технологий для {company.name}: {len(unique_skills)} навыков")
 
-    def run_etl(self, queries=['Python разработчик', 'Java разработчик', 'JavaScript разработчик']):
+    def run_etl(self, queries=['Python разработчик']):
         session = self.Session()
         
         # Словарь для кэширования данных о компаниях
@@ -152,7 +152,7 @@ class HHExtractor:
             print(f"Собираем вакансии по запросу: '{query}' в Екатеринбурге")
             
             # Получаем вакансии по запросу
-            data = self.get_vacancies_by_query(query, area=3, per_page=20)  # Уменьшил для теста
+            data = self.get_vacancies_by_query(query, area=3, per_page=20)
             if not data or 'items' not in data:
                 print(f"Нет данных для запроса: {query}")
                 continue
@@ -168,7 +168,7 @@ class HHExtractor:
                         print(f"Получаем информацию о компании {employer_id}...")
                         employer_details = self.get_employer_details(employer_id)
                         employer_cache[employer_id] = employer_details
-                        time.sleep(0.5)  # Пауза между запросами
+                        time.sleep(0.5)
                     else:
                         employer_details = employer_cache[employer_id]
                     
@@ -187,14 +187,12 @@ class HHExtractor:
                         companies_added += 1
                         print(f"Добавлена компания: {company_info['name']}")
                     
-                    # 🔧 ИСПРАВЛЕНИЕ: Получаем полную информацию о вакансии с навыками
+                    # Получаем полную информацию о вакансии с навыками
                     vacancy_details = self.get_vacancy_details(vacancy_data['id'])
                     if vacancy_details:
-                        # Используем полные данные с навыками
                         vacancy_info = self.extract_vacancy_info(vacancy_details)
                         print(f"Навыки вакансии '{vacancy_info['title']}': {vacancy_info['requirements']}")
                     else:
-                        # Запасной вариант - используем краткие данные
                         vacancy_info = self.extract_vacancy_info(vacancy_data)
                         print(f"Нет навыков для вакансии '{vacancy_info['title']}'")
                     
@@ -205,20 +203,23 @@ class HHExtractor:
                         session.add(vacancy)
                         vacancies_added += 1
                     
-                    # Пауза между запросами вакансий
                     time.sleep(0.3)
                     
                 except Exception as e:
-                    session.rollback()  # Сбрасываем сессию после ошибки
+                    session.rollback()
                     print(f"Ошибка обработки вакансии: {e}")
                     continue
                 
-            # Пауза между разными запросами
             time.sleep(1)
         
-        # Обновляем технологические стеки всех компаний
+        #  Принудительно обновляем сессию для новых компаний
         print("Обновляем технологические стеки компаний...")
+        session.expire_all()  # обновляем состояние всех объектов в сессии
+        
+        # Теперь получаем ВСЕ компании с актуальными данными
         companies = session.query(Company).all()
+        print(f"Всего компаний для обновления стеков: {len(companies)}")
+        
         for company in companies:
             self.update_company_tech_stack(session, company.hh_id)
         
@@ -245,6 +246,7 @@ class HHExtractor:
         except Exception as e:
             print(f'Ошибка запроса вакансии {vacancy_id}: {e}')
             return None
+
 # Запуск ETL
 if __name__ == "__main__":
     extractor = HHExtractor()
