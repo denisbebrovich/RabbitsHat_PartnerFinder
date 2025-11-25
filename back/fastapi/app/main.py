@@ -28,8 +28,8 @@ async def db_companies(id=None):
 async def db_vacancies(id=None):
     with Session() as session:
         if id != None:
-            return session.query(Company).filter_by(hh_id=id).all()
-        return session.query(Company).all()
+            return session.query(Vacancy).filter_by(hh_id=id).all()
+        return session.query(Vacancy).all()
     
 @app.get("/db/init")
 async def db_init():
