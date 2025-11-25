@@ -12,10 +12,11 @@ services:
       - net
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/database/init_sql:/docker-entrypoint-initdb.d
 
   fastapi:
     container_name: fastapi
+    environment:
+      POSTGRES_URL: postgresql://admin:password@postgres:5432
     build:
       context: ./back/
       dockerfile: ./fastapi/Dockerfile
@@ -23,6 +24,8 @@ services:
       - "80:80"
     networks:
       - net
+    depends_on:
+      - postgres
 
 volumes:
   postgres_data:
