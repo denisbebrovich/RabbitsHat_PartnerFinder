@@ -8,10 +8,8 @@ class DataAnalyzer:
         self.Session = sessionmaker(bind=self.db_engine)
     
     def get_industry_stats(self):
-        """Статистика по отраслям - ИСПРАВЛЕННЫЙ"""
         session = self.Session()
         
-        # Собираем статистику вручную, т.к. industries - это JSON список
         all_companies = session.query(Company).all()
         
         industry_stats = {}
@@ -40,7 +38,6 @@ class DataAnalyzer:
         return sorted(result, key=lambda x: x['company_count'], reverse=True)
     
     def get_popular_technologies(self, limit=10):
-        """Самые популярные технологии - БЕЗ ИЗМЕНЕНИЙ"""
         session = self.Session()
         
         all_tech = []
@@ -56,7 +53,6 @@ class DataAnalyzer:
         return tech_counter.most_common(limit)
     
     def get_companies_for_partnership(self, required_techs, industry=None):
-        """Подбор компаний для партнерства по технологиям - ИСПРАВЛЕННЫЙ"""
         session = self.Session()
         
         query = session.query(Company)
@@ -80,7 +76,6 @@ class DataAnalyzer:
         return matching_companies
     
     def get_companies_by_industry(self, industry_name):
-        """НОВЫЙ: Поиск компаний по конкретной отрасли"""
         session = self.Session()
         
         companies = []
@@ -93,7 +88,6 @@ class DataAnalyzer:
         return companies
     
     def get_technology_distribution(self):
-        """НОВЫЙ: Распределение технологий по отраслям"""
         session = self.Session()
         
         distribution = {}
@@ -112,7 +106,6 @@ class DataAnalyzer:
         return distribution
     
     def get_top_companies_by_tech_stack(self, min_tech_count=3):
-        """НОВЫЙ: Компании с самым богатым технологическим стеком"""
         session = self.Session()
         
         companies = session.query(Company).all()
@@ -132,7 +125,6 @@ class DataAnalyzer:
         return sorted_companies
     
     def get_vacancy_stats(self):
-        """НОВЫЙ: Статистика по вакансиям"""
         session = self.Session()
         
         total_vacancies = session.query(func.count(Vacancy.hh_id)).scalar()
@@ -156,3 +148,14 @@ class DataAnalyzer:
             'experience_distribution': dict(experience_stats),
             'employment_distribution': dict(employment_stats)
         }
+    
+    def calculate_company_score(self, company):
+        score = 0
+        
+        tech_count = len(company.tech_stack) if company.tech_stack else 0
+        score += min(tech_count * 4, 40)  
+        
+        if company.is_it_company:
+            score += 30
+                
+        return min(score, 100)
