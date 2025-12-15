@@ -11,15 +11,12 @@ from nodes import score_node, draft_node, approval_node
 
 DATABASE_URL = "postgresql://admin:password@localhost:5432/partner_finder"
 
-# --- ПОСТРОЕНИЕ ГРАФА ---
 workflow = StateGraph(AgentState)
 
-# Добавляем узлы
 workflow.add_node("scoring", score_node)
 workflow.add_node("drafting", draft_node)
 workflow.add_node("approval", approval_node)
 
-# Связи
 workflow.set_entry_point("scoring")
 
 
@@ -34,15 +31,11 @@ workflow.add_edge("approval", END)
 app = workflow.compile()
 
 
-# --- ЗАПУСК ---
 def run_agent():
     engine = create_engine(DATABASE_URL)
     Session = sessionmaker(bind=engine)
     session = Session()
-
-    # Ищем компанию БЕЗ письма
-    # (Делаем join или подзапрос, чтобы найти тех, кого нет в emails)
-    # Для простоты: берем все компании и проверяем в цикле
+    
     companies = session.query(Company).all()
     target = None
 
@@ -55,7 +48,6 @@ def run_agent():
         print("Все компании уже обработаны! (Запустите clear_emails.py если хотите начать заново)")
         return
 
-    # Входные данные
     inputs = {
         "company_id": target.hh_id,
         "company_name": target.name,
