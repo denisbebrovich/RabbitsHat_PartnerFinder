@@ -18,8 +18,11 @@
 
 # RabbitsHat_PartnerFinder
 КТ2: все делали коммиты на гитхаб
+
 Халдин Денис так же переписал [базу знаний](https://disk.yandex.ru/edit/d/hW5D2WbhqVb34iyZ3fakACPegnqahzm72s0qoIz-cKg6bDBKRTA4VlRzUQ) 
 и сделал расписание на [доске](https://boards.yandex.ru/whiteboard/?hash=6c7a1e72a62b9e9a794969aa4c09db8c)
 по требованию проверки кт1 
+
+
 Мамаев Сергей отредактировал сгенерированные письма
 Конкретные задачи в коде можно прочитать на доске
