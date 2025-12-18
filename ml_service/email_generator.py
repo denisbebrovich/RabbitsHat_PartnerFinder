@@ -11,7 +11,7 @@ DATABASE_URL = "postgresql://admin:password@localhost:5432/partner_finder"
 LM_STUDIO_URL = "http://localhost:1234/v1"
 
 # Настройка генерации письма
-TARGET_LANG = 'ru'  # Язык письма: 'ru' или 'en'
+TARGET_LANG = 'en'  # Язык письма: 'ru' или 'en'
 TARGET_STYLE = 'formal'  # Стиль письма: 'formal' или 'informal'
 MIN_SCORE = 40  # Минимальный рейтинг компании
 
@@ -176,17 +176,39 @@ def generate_emails():
     targets = session.query(Company).filter(Company.score >= MIN_SCORE).all()
     print(f"Найдено компаний с рейтингом > {MIN_SCORE}: {len(targets)}")
 
+    count = 0
+
     for company in targets:
-        # Проверка на существование письма
-        if session.query(Email).filter_by(company_id=company.hh_id).first():
+        # --- НОВАЯ ЛОГИКА ПРОВЕРКИ ---
+        # Мы ищем, есть ли уже письмо с ТЕКУЩИМ языком (TARGET_LANG)
+        # 1. Получаем все письма компании
+        existing_emails = session.query(Email).filter_by(company_id=company.hh_id).all()
+
+        # 2. Проверяем, есть ли среди них письмо на нужном языке
+        already_has_target_lang = False
+        for email in existing_emails:
+            # Проверяем параметры генерации (если они есть)
+            if email.generation_params and email.generation_params.get("lang") == TARGET_LANG:
+                already_has_target_lang = True
+                break
+            # Если параметров нет (старые письма), считаем их русскими ('ru')
+            elif not email.generation_params and TARGET_LANG == 'ru':
+                already_has_target_lang = True
+                break
+
+        if already_has_target_lang:
+            # Если английское письмо уже есть, и мы генерируем английское — пропускаем
             continue
+        # -----------------------------
 
-        print(f"Генерация для: {company.name}...")
+        print(f"Генерация ({TARGET_LANG.upper()}) для: {company.name}...")
 
-        # Подготовка данных
         stack_clean = clean_stack_for_prompt(company.tech_stack)
         stack_str = ", ".join(stack_clean) if stack_clean else "IT technologies"
         top_tech = stack_clean[0] if stack_clean else "Tech"
+
+        # Если описание русское, а генерируем EN — модель сама переведет суть,
+        # но можно добавить подсказку "IT company" если описания нет.
         desc_short = company.description[:200].replace("\n", " ") + "..." if company.description else "IT company"
 
         user_prompt_filled = current_template["user_template"].format(
@@ -208,17 +230,19 @@ def generate_emails():
 
             email_text = response.choices[0].message.content
 
+            # СОХРАНЯЕМ НОВОЕ ПИСЬМО (ВТОРЫМ РЯДОМ)
             new_email = Email(
                 company_id=company.hh_id,
                 content=email_text,
-                status=f'generated_{TARGET_LANG}_{TARGET_STYLE}'
+                status=f'generated_{TARGET_LANG}_{TARGET_STYLE}',
+                is_approved=False,  # Важно: оно требует проверки
+                # Обязательно пишем параметры, чтобы потом различить языки
+                generation_params={"lang": TARGET_LANG, "style": TARGET_STYLE}
             )
             session.add(new_email)
             session.commit()
-
-            print(f"--- ПИСЬМО ({company.name}) ---")
-            print(email_text)
-            print("==============================\n")
+            count += 1
+            print(f"OK ({count})")
 
         except Exception as e:
             print(f"Ошибка API: {e}")

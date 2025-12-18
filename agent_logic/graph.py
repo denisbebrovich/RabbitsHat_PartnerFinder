@@ -5,9 +5,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from back.DB.models import Company, Email
+from back.DB.models import Company, Email, Vacancy
 from state import AgentState
-from nodes import score_node, draft_node, approval_node
+from nodes import enrichment_node, score_node, draft_node, approval_node, finalize_skipped_node
 
 DATABASE_URL = "postgresql://admin:password@localhost:5432/partner_finder"
 
@@ -15,24 +15,39 @@ DATABASE_URL = "postgresql://admin:password@localhost:5432/partner_finder"
 workflow = StateGraph(AgentState)
 
 # Добавляем узлы
+workflow.add_node("enrichment", enrichment_node)
 workflow.add_node("scoring", score_node)
 workflow.add_node("drafting", draft_node)
 workflow.add_node("approval", approval_node)
+# !!! НОВЫЙ УЗЕЛ !!!
+workflow.add_node("finalize_skipped", finalize_skipped_node)
 
 # Связи
-workflow.set_entry_point("scoring")
+workflow.set_entry_point("enrichment")
+workflow.add_edge("enrichment", "scoring")
 
-
+# Логика ветвления
 def check_score(state):
-    return "drafting" if state['is_relevant'] else END
+    # Если релевантно -> пишем письмо
+    if state.get('is_relevant'):
+        return "drafting"
+    # Если НЕТ -> идем фиксировать пропуск (вместо END)
+    return "finalize_skipped"
 
+workflow.add_conditional_edges(
+    "scoring",
+    check_score,
+    {
+        "drafting": "drafting",
+        "finalize_skipped": "finalize_skipped" # <-- Маршрут для низкого рейтинга
+    }
+)
 
-workflow.add_conditional_edges("scoring", check_score, {"drafting": "drafting", END: END})
 workflow.add_edge("drafting", "approval")
 workflow.add_edge("approval", END)
+workflow.add_edge("finalize_skipped", END) # После фиксации пропуска - конец
 
 app = workflow.compile()
-
 
 # --- ЗАПУСК ---
 def run_agent():
@@ -40,36 +55,43 @@ def run_agent():
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    # Ищем компанию БЕЗ письма
-    # (Делаем join или подзапрос, чтобы найти тех, кого нет в emails)
-    # Для простоты: берем все компании и проверяем в цикле
-    companies = session.query(Company).all()
-    target = None
+    print(f"🔍 Ищу необработанную компанию...")
 
-    for comp in companies:
-        if not session.query(Email).filter_by(company_id=comp.hh_id).first():
-            target = comp
-            break
+    # SQL запрос берет компании, у которых Email.id IS NULL
+    # Теперь, когда мы сохраняем статус 'skipped', у них БУДЕТ Email.id,
+    # и они больше не попадут в выборку.
+    target = session.query(Company).outerjoin(Email).filter(
+        Email.id == None
+    ).first()
 
     if not target:
-        print("Все компании уже обработаны! (Запустите clear_emails.py если хотите начать заново)")
+        print("🎉 Все компании обработаны!")
         return
 
-    # Входные данные
+    # Собираем тексты вакансий
+    vacancies_text = [v.description for v in target.vacancies if v.description]
+
     inputs = {
         "company_id": target.hh_id,
         "company_name": target.name,
         "company_data": {
             "tech_stack": target.tech_stack,
             "is_it_company": target.is_it_company,
-            "description": target.description
+            "description": target.description,
+            "vacancies_text": vacancies_text
         },
         "logs": []
     }
 
-    print(f"🚀 ЗАПУСК АГЕНТА ПО КОМПАНИИ: {target.name}")
+    print(f"🚀 ЗАПУСК АГЕНТА: {target.name}")
     app.invoke(inputs)
-
+    session.close()
 
 if __name__ == "__main__":
-    run_agent()
+    while True:
+        run_agent()
+        # Добавил небольшую паузу или проверку, чтобы не спамить, если все обработано
+        # Но логика input осталась как у тебя
+        cont = input("\nОбработать следующую? [Enter - Да, n - Нет]: ")
+        if cont.lower() == 'n':
+            break
