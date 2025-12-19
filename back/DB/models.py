@@ -34,3 +34,13 @@ class Vacancy(Base):
     published_at = Column(DateTime, default = datetime.utcnow)
     
     company = relationship("Company", back_populates="vacancies")
+
+class AgentBehaviorLog(Base):
+    __tablename__ = 'agent_behavior_logs'
+    id = Column(Integer, primary_key=True)
+    company_id = Column(String, ForeignKey('companies.hh_id'))
+    prompt_sent = Column(Text)
+    generated_letter = Column(Text)
+    user_edits = Column(Text)  # Сюда пишем финальный текст
+    is_approved = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)

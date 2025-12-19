@@ -1,6 +1,5 @@
 from sqlalchemy import create_engine, text
-from models import Base
-
+from .models import Base  
 def init_database():
     db_url = 'postgresql://admin:password@localhost:5432/partner_finder'
     engine = create_engine(db_url)
