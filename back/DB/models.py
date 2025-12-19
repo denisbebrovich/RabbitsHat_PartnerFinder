@@ -4,7 +4,6 @@ from datetime import datetime
 
 Base = declarative_base()
 
-
 class Company(Base):
     __tablename__ = 'companies'
     hh_id = Column(String, primary_key=True)
@@ -19,6 +18,7 @@ class Company(Base):
 
     vacancies = relationship("Vacancy", back_populates="company")
     emails = relationship("Email", back_populates="company")
+    memories = relationship("Memory", back_populates="company")
 
 class Vacancy(Base):
     __tablename__ = 'vacancies'
@@ -43,7 +43,6 @@ class Email(Base):
     company_id = Column(String, ForeignKey('companies.hh_id'))
 
     content = Column(Text)
-    # Вот эти поля должны быть:
     final_content = Column(Text, nullable=True)
     status = Column(String(50), default='generated')
     is_approved = Column(Boolean, default=False)
@@ -52,3 +51,20 @@ class Email(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow)
     company = relationship("Company", back_populates="emails")
+
+
+class Memory(Base):
+    __tablename__ = 'memories'
+    id = Column(Integer, primary_key=True, index=True)
+
+    company_id = Column(String, ForeignKey('companies.hh_id'), nullable=True)
+
+    # Тройка RFT: Субъект -> Предикат -> Объект
+    subject = Column(String)
+    predicate = Column(String)
+    obj = Column(String)
+
+    confidence = Column(Float, default=1.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    company = relationship("Company", back_populates="memories")

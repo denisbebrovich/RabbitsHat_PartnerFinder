@@ -5,11 +5,13 @@ from DB.models import Company, Vacancy
 from DB.init_database import init_database
 from services.hh_etl import HHExtractor
 import os
+from api.data_endps import router as api_router
 
 app = FastAPI()
-
-postgres_url = os.environ['POSTGRES_URL']
+app.include_router(api_router)
+postgres_url = os.environ.get('POSTGRES_URL', 'postgresql://admin:password@localhost:5432')
 db_url = postgres_url + '/partner_finder'
+
 engine = create_engine(db_url)
 Session = sessionmaker(bind = engine)
 
@@ -39,8 +41,3 @@ async def db_init():
 async def db_fill():
     extractor = HHExtractor(db_url)
     extractor.run_etl()
-
-# health
-# docs
-# ну и мэйн 
-# и бд

@@ -3,13 +3,12 @@ from email.message import EmailMessage
 
 SMTP_SERVER = "smtp.gmail.com"  # Для Gmail: smtp.gmail.com | Mail.ru: smtp.mail.ru
 SMTP_PORT = 465
-SENDER_EMAIL = "procompetencepartnerhelper@gmail.com"
-RECIPIENT_EMAIL = "Mamaev.Sergey@urfu.me"
-# ВАЖНО: используйте пароль приложения, а не основной пароль
-PASSWORD = "rkbv zmhv dumo pnpd"
+SENDER_EMAIL = "ОТ КОГО ОТПРАВЛЯЕМ@gmail.com"
+RECIPIENT_EMAIL = "КУДА ОТПРАВЛЯЕМ@urfu.me"
+PASSWORD = "ТУТ ДОЛЖЕН БЫТЬ ПАРОЛЬ"
 
 msg = EmailMessage()
-msg.set_content("Привет, как дела?")
+msg.set_content("Добрый день, как дела?")
 msg['Subject'] = "Тестовое письмо"
 msg['From'] = SENDER_EMAIL
 msg['To'] = RECIPIENT_EMAIL

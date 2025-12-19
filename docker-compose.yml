@@ -21,7 +21,7 @@ services:
       context: ./back/
       dockerfile: ./fastapi/Dockerfile
     ports:
-      - "80:80"
+      - "8000:8000"
     networks:
       - net
     depends_on:

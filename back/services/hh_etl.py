@@ -3,11 +3,9 @@ import sys
 import requests
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from datetime import datetime
 import time
 import re
 
-# Ensure `back/` directory is available for imports when running as a script
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, '..'))
 if PROJECT_ROOT not in sys.path:
@@ -57,7 +55,6 @@ class HHExtractor:
             if response.status_code == 200:
                 return response.json()
             else:
-                # 404 часто бывает, если компания скрыла профиль или забанена
                 return None
         except Exception as e:
             return None
@@ -140,7 +137,6 @@ class HHExtractor:
         session = self.Session()
         employer_cache = {}
 
-        # РАСШИРЕННЫЙ СПИСОК ЗАПРОСОВ
         queries = [
             'Python разработчик',
             'Java разработчик',
@@ -160,7 +156,6 @@ class HHExtractor:
         for query in queries:
             print(f"\n🔎 Запрос: '{query}'")
 
-            # ПАГИНАЦИЯ: Берем первые 5 страниц (по 100 вакансий = до 500 на запрос)
             for page in range(5):
                 print(f"   -> Страница {page}...")
 
@@ -176,29 +171,22 @@ class HHExtractor:
                     try:
                         employer_id = str(vacancy_data['employer']['id'])
 
-                        # Кэшируем работодателя, чтобы не дудосить API
                         if employer_id not in employer_cache:
                             employer_details = self.get_employer_details(employer_id)
                             employer_cache[employer_id] = employer_details
-                            # Пауза меньше, так как запросов много
                             time.sleep(0.2)
                         else:
                             employer_details = employer_cache[employer_id]
 
-                        # --- КОМПАНИЯ ---
                         company_info = self.extract_company_info(vacancy_data['employer'], employer_details)
 
-                        # Проверяем существование
                         if not session.query(Company).filter_by(hh_id=company_info['hh_id']).first():
                             company = Company(**company_info)
                             session.add(company)
-                            session.flush()  # Чтобы получить ID
+                            session.flush()
                             companies_added += 1
 
-                        # --- ВАКАНСИЯ ---
-                        # Проверяем существование вакансии
                         if not session.query(Vacancy).filter_by(hh_id=str(vacancy_data['id'])).first():
-                            # Берем детали для навыков
                             vacancy_details = self.get_vacancy_details(vacancy_data['id'])
                             if vacancy_details:
                                 vacancy_info = self.extract_vacancy_info(vacancy_details)
@@ -213,9 +201,8 @@ class HHExtractor:
                         session.rollback()
                         continue
 
-                # Сохраняем пачку
                 session.commit()
-                time.sleep(0.5)  # Пауза между страницами
+                time.sleep(0.5)
 
         print("\n⏳ Обновляем технологические стеки компаний...")
         companies = session.query(Company).all()
@@ -230,8 +217,6 @@ class HHExtractor:
         print(f"Новых компаний добавлено в этом запуске: {companies_added}")
         print(f"Новых вакансий добавлено в этом запуске: {vacancies_added}")
 
-
-# Запуск ETL
 if __name__ == "__main__":
     extractor = HHExtractor()
     extractor.run_etl()

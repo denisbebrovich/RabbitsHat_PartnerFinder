@@ -3,14 +3,11 @@ import json
 import time
 
 def test_api_structure():
-    """Тестируем структуру данных API HH.ru"""
-    
-    # 1. Тестируем краткий список вакансий
     print("=== ТЕСТ КРАТКОГО СПИСКА ВАКАНСИЙ ===")
     url = "https://api.hh.ru/vacancies"
     params = {
         "text": "Python разработчик", 
-        "area": 3,  # Екатеринбург
+        "area": 3,
         "per_page": 3
     }
     
@@ -26,8 +23,7 @@ def test_api_structure():
             print(f"Компания: {vacancy['employer'].get('name')}")
             print(f"key_skills в кратком формате: {vacancy.get('key_skills')}")
             print(f"Есть ли key_skills: {'key_skills' in vacancy}")
-            
-            # 2. Тестируем полную информацию о вакансии
+
             print("\n=== ТЕСТ ПОЛНОЙ ИНФОРМАЦИИ О ВАКАНСИИ ===")
             vacancy_id = vacancy['id']
             detail_url = f"https://api.hh.ru/vacancies/{vacancy_id}"
@@ -46,17 +42,15 @@ def test_api_structure():
                 print(f"Ошибка запроса деталей: {detail_response.status_code}")
             
             print("-" * 50)
-            time.sleep(0.5)  # Пауза между запросами
+            time.sleep(0.5)
             
     else:
         print(f"Ошибка API: {response.status_code}")
 
 def test_employer_api():
-    """Тестируем API работодателей"""
     print("\n=== ТЕСТ API РАБОТОДАТЕЛЕЙ ===")
-    
-    # Берем ID компании из предыдущего теста
-    employer_id = "664709"  # К Телеком,ООО
+
+    employer_id = "664709"
     url = f"https://api.hh.ru/employers/{employer_id}"
     
     response = requests.get(url)

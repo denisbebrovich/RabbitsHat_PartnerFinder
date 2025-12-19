@@ -4,61 +4,85 @@ import tempfile
 import subprocess
 import platform
 import re
-from openai import OpenAI
 
-# Настройка путей
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from ml_service.scoring import calculate_score
-from ml_service.email_generator import clean_stack_for_prompt
 from ml_service.skill_extractor import SkillExtractor
-from back.DB.models import Email, Company
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from ml_service.email_generator import EmailGenerator
+from ml_service.api_client import BackendClient
 
-# КОНФИГ
-DATABASE_URL = "postgresql://admin:password@localhost:5432/partner_finder"
-LM_STUDIO_URL = "http://localhost:1234/v1"
+# ИНИЦИАЛИЗАЦИЯ СЕРВИСОВ
+skill_service = SkillExtractor()
+email_service = EmailGenerator()
 
-engine = create_engine(DATABASE_URL)
-Session = sessionmaker(bind=engine)
-client = OpenAI(base_url=LM_STUDIO_URL, api_key="lm-studio")
-extractor = SkillExtractor()  # Инициализируем один раз
+api = BackendClient()
 
-
-# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 def is_russian(text):
+    if not text: return False
     return bool(re.search('[а-яА-Я]', text))
+
+
+def clean_stack_list(stack_list):
+    if not stack_list: return []
+
+    STOP_WORDS = {
+        "английский", "язык", "решение", "проблем", "коммуникабельность",
+        "ответственность", "пунктуальность", "работа", "команде", "знание",
+        "опыт", "разработка", "анализ", "желание", "учиться"
+    }
+
+    clean = []
+    seen = set()
+
+    for tech in stack_list:
+        t_lower = tech.lower().strip()
+        if len(tech) > 25 or len(tech) < 2: continue
+        if any(stop in t_lower for stop in STOP_WORDS): continue
+
+        if t_lower in ["sql", "php", "html", "css", "mvp", "api", "seo"]:
+            tech_clean = t_lower.upper()
+        else:
+            tech_clean = tech.strip().capitalize()
+
+        if tech_clean.lower() not in seen:
+            clean.append(tech_clean)
+            seen.add(tech_clean.lower())
+
+    return clean[:8]
 
 
 def open_editor(initial_text):
     with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix=".txt", encoding='utf-8') as tf:
         tf.write(initial_text)
         tf_path = tf.name
+
     try:
         if platform.system() == 'Windows':
             subprocess.call(['notepad.exe', tf_path])
         else:
-            subprocess.call(['nano', tf_path])
-    except:
-        pass
+            editor = os.environ.get('EDITOR', 'nano')
+            subprocess.call([editor, tf_path])
+    except Exception as e:
+        print(f"⚠️ Не удалось открыть редактор: {e}")
+
     with open(tf_path, 'r', encoding='utf-8') as f:
         edited_text = f.read()
+
     os.remove(tf_path)
     return edited_text
 
-
-# --- NODE 0: ENRICHMENT (Обогащение данными) ---
+# NODE 0: ENRICHMENT (Обогащение данными)
 def enrichment_node(state):
     print(f"\n🔹 [0] ОБОГАЩЕНИЕ ДАННЫХ...")
 
     current_stack = state['company_data'].get('tech_stack', [])
 
-    # Если стек уже есть и он не пустой — пропускаем
     if current_stack and len(current_stack) > 0:
         print(f"   Стек уже заполнен: {current_stack[:3]}...")
         return {}
 
-    # Если стека нет — запускаем SkillExtractor
     print("   ⚠️ Стек пуст! Запускаю SkillExtractor по вакансиям...")
 
     vacancies_text = state['company_data'].get('vacancies_text', [])
@@ -66,212 +90,129 @@ def enrichment_node(state):
         print("   ❌ Нет текстов вакансий для анализа.")
         return {}
 
-    # Объединяем все вакансии в один текст для анализа
     full_text = " ".join(vacancies_text)
-    extracted_stack = extractor.extract_skills(full_text)
 
+    extracted_stack = skill_service.extract_skills(full_text)
     print(f"   ✅ Извлечено навыков: {len(extracted_stack)} ({extracted_stack[:5]}...)")
 
-    # СОХРАНЯЕМ В БД (чтобы в следующий раз не считать)
-    session = Session()
-    company = session.query(Company).filter_by(hh_id=state['company_id']).first()
-    if company:
-        company.tech_stack = extracted_stack
-        session.commit()
-        print("   💾 Стек сохранен в БД.")
-    session.close()
+    print("   💾 Отправляю обновленный стек на бэкенд...")
+    api.update_tech_stack(state['company_id'], extracted_stack)
 
-    # Обновляем состояние агента
     new_data = state['company_data'].copy()
     new_data['tech_stack'] = extracted_stack
 
     return {
         "company_data": new_data,
-        "logs": ["Skills extracted and saved"]
+        "logs": ["Skills extracted via SpaCy and saved via API"]
     }
 
 
-# --- NODE 1: SCORING (Оценка) ---
+# NODE 1: SCORING (Оценка релевантности)
 def score_node(state):
     print(f"🔹 [1] АНАЛИЗ: {state['company_name']}")
 
-    class MockComp:
-        def __init__(self, data):
-            self.tech_stack = data.get('tech_stack', [])
-            self.is_it_company = data.get('is_it_company', False)
-            self.description = data.get('description', "")
-
-    score = calculate_score(MockComp(state['company_data']))
+    score = calculate_score(state['company_data'])
     print(f"   Рейтинг: {score}/100")
+
+    is_relevant = score >= 60
 
     return {
         "score": score,
-        "is_relevant": score >= 60,  # Порог прохода
+        "is_relevant": is_relevant,
         "logs": [f"Scored: {score}"]
     }
 
 
-# --- NODE 2: DRAFTING (Генерация Llama 3) ---
+# NODE 2: DRAFTING (Генерация письма)
 def draft_node(state):
-    print(f"🔹 [2] ГЕНЕРАЦИЯ ПИСЬМА (Llama 3 Local)...")
+    print(f"🔹 [2] ГЕНЕРАЦИЯ ПИСЬМА (через Llama)...")
 
-    if not state['is_relevant']:
+    if not state.get('is_relevant'):
         print("   ⛔ Пропуск (низкий рейтинг)")
         return {"status": "skipped", "logs": ["Skipped: Low score"]}
 
-    # 1. Достаем данные
-    data = state['company_data']
     comp_name = state['company_name']
+    data = state['company_data']
 
-    # Сырые данные
     raw_desc = data.get('description')
-    raw_vacancies = data.get('vacancies_text', [])  # Список текстов вакансий
+    raw_vacancies = data.get('vacancies_text', [])
 
-    # 2. ОПРЕДЕЛЕНИЕ ЯЗЫКА (Каскадная проверка)
-    # Собираем весь доступный текст в одну кучу, чтобы найти хоть одну русскую букву
     text_for_lang_check = (raw_desc or "") + " ".join(raw_vacancies) + comp_name
-
-    # Если нашлась хоть одна русская буква — считаем, что это RU (для HH.ru это верно на 99%)
     is_ru = is_russian(text_for_lang_check)
     lang = 'ru' if is_ru else 'en'
-
-    print(f"   Язык определен как: {lang.upper()} (на основе анализа текста)")
-
-    # 3. ПОДГОТОВКА ОПИСАНИЯ ДЛЯ МОДЕЛИ
-    # Если описания нет, модель начнет галлюцинировать.
-    # Мы подсунем ей кусок текста из вакансий, чтобы она поняла, чем занимается компания.
+    print(f"   Язык определен как: {lang.upper()}")
 
     if raw_desc and len(raw_desc) > 10:
-        # Если есть нормальное описание — берем его
         desc_clean = raw_desc[:400].replace("\n", " ").replace('"', "'").strip()
     elif raw_vacancies:
-        # Если описания нет, но есть вакансии — берем начало вакансий как контекст
-        print("   ⚠️ Описания нет, использую текст вакансий как контекст.")
+        print("   ⚠️ Описания нет, использую текст вакансий.")
         desc_clean = " ".join(raw_vacancies)[:400].replace("\n", " ").replace('"', "'").strip()
     else:
-        # Если вообще ничего нет — ставим заглушку
         desc_clean = "IT-компания" if lang == 'en' else "IT-компания с активными вакансиями"
 
-    # 4. Подготовка стека
-    stack_clean = clean_stack_for_prompt(data.get('tech_stack', []))
+    stack_clean = clean_stack_list(data.get('tech_stack', []))
     stack_str = ", ".join(stack_clean) if stack_clean else ("IT Tech" if lang == 'en' else "IT-технологии")
 
-    # 5. Выбор шаблона (Строго как в dataset_partners.jsonl)
-    if lang == 'ru':
-        instruction = f'Напиши деловое письмо с предложением стажировки в компанию "{comp_name}". Стек: {stack_str}. Описание компании: {desc_clean}'
-        stop_words = ["<|eot_id|>", "### Instruction:", "### Input:", "С уважением,"]
-        signature = "С уважением,\nКоманда Центра «ПроКомпетенции»"
-    else:
-        instruction = f'Write a formal partnership proposal email in English to "{comp_name}". Base your proposal on their tech stack ({stack_str}) and company description: {desc_clean}'
-        stop_words = ["<|eot_id|>", "### Instruction:", "### Input:", "Kind regards,", "Sincerely,"]
-        signature = "Kind regards,\nProCompetencies Center Team"
+    result = email_service.generate_email(
+        company_name=comp_name,
+        stack_str=stack_str,
+        desc_clean=desc_clean,
+        lang=lang
+    )
 
-    # 6. Сборка промпта
-    alpaca_prompt = f"""Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
-
-### Instruction:
-{instruction}
-
-### Input:
-
-
-### Response:
-"""
-
-    try:
-        response = client.completions.create(
-            model="local-model",
-            prompt=alpaca_prompt,
-            temperature=0.05,
-            top_p=0.9,
-            max_tokens=600,
-            frequency_penalty=0.0,
-            presence_penalty=0.0,
-            stop=stop_words
-        )
-
-        raw_text = response.choices[0].text.strip()
-        final_draft = f"{raw_text}\n\n{signature}"
-
+    if result["success"]:
         return {
-            "draft_email": final_draft,
+            "draft_email": result["text"],
             "status": "drafted",
             "logs": [f"Draft created ({lang})"]
         }
+    else:
+        return {
+            "error": result["error"],
+            "logs": [f"Generation failed: {result['error']}"]
+        }
 
-    except Exception as e:
-        print(f"   ❌ Ошибка генерации: {e}")
-        return {"error": str(e)}
 
-
-# --- NODE 3: HUMAN REVIEW ---
+# NODE 3: HUMAN REVIEW (Ручная проверка)
 def approval_node(state):
     print(f"🔹 [3] ПРОВЕРКА ЧЕЛОВЕКОМ")
 
     if state.get('status') == 'skipped':
         return {}
+    if state.get('error'):
+        print(f"   ❌ Ошибка на предыдущем этапе: {state['error']}")
+        return {}
 
-    print("   Открываю редактор...")
+    print("   Открываю редактор для проверки письма...")
     final_text = open_editor(state['draft_email'])
 
     print("\n   --- ИТОГОВОЕ ПИСЬМО ---")
-    print(final_text)
+    print(final_text[:200] + "...\n(показано начало)")
     print("   -----------------------")
 
-    choice = input("   Сохранить в БД? (y/n): ").lower()
+    choice = input("   Сохранить письмо и пометить 'Ready to Send'? (y/n): ").lower()
 
     if choice == 'y':
-        session = Session()
-        existing = session.query(Email).filter_by(company_id=state['company_id']).first()
-
-        if not existing:
-            new_email = Email(
-                company_id=state['company_id'],
-                content=state['draft_email'],
-                final_content=final_text,
-                is_approved=True,
-                status='ready_to_send'
-            )
-            session.add(new_email)
-        else:
-            existing.final_content = final_text
-            existing.is_approved = True
-            existing.status = 'ready_to_send'
-
-        session.commit()
-        session.close()
-        print("   ✅ Сохранено!")
+        api.save_email_draft(
+            company_id=state['company_id'],
+            email_text=final_text,
+            status="ready_to_send"
+        )
+        print("   ✅ Письмо сохранено через API!")
         return {"status": "approved", "final_email": final_text}
     else:
-        print("   ❌ Отменено.")
+        print("   ❌ Письмо отклонено.")
         return {"status": "rejected"}
 
+
+# NODE X: FINALIZE SKIPPED (Фиксация пропуска)
 def finalize_skipped_node(state):
-    print(f"🔹 [X] ФИКСАЦИЯ ПРОПУСКА (Низкий рейтинг)")
+    print(f"🔹 [X] ФИКСАЦИЯ ПРОПУСКА")
 
-    # Сохраняем в БД запись, что мы посмотрели эту компанию, но пропустили
-    # Это нужно, чтобы SQL-запрос больше не выдавал эту компанию
-
-    session = Session()
-    try:
-        # Проверка на дубликаты
-        existing = session.query(Email).filter_by(company_id=state['company_id']).first()
-        if not existing:
-            skipped_email = Email(
-                company_id=state['company_id'],
-                content="Skipped due to low score",
-                final_content="Skipped due to low score",
-                is_approved=False,
-                status='skipped'  # Специальный статус
-            )
-            session.add(skipped_email)
-            session.commit()
-            print("   💾 Статус 'skipped' сохранен в БД.")
-        else:
-            print("   (Запись уже была)")
-    except Exception as e:
-        print(f"   Ошибка сохранения пропуска: {e}")
-    finally:
-        session.close()
+    api.log_skip(
+        company_id=state['company_id'],
+        reason="Low score or irrelevant"
+    )
+    print("   💾 Пропуск зафиксирован в БД.")
 
     return {"status": "skipped_saved"}
