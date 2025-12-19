@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>{% block title %}Навигация{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  {% block styles %}
+  <style>
+    body {
+      min-height: 100vh;
+      background-color: #f8f9fa;
+    }
+    .sidebar {
+      min-height: 100vh;
+      background-color: #ffffff;
+      border-right: 1px solid #dee2e6;
+    }
+  </style>
+  {% endblock %}
+</head>
+<body>
+
+<div class="container-fluid">
+  <div class="row">
+
+    <!-- Левая боковая панель -->
+    <aside class="col-12 col-md-3 col-lg-2 sidebar p-3">
+      <h5 class="mb-3">Навигация</h5>
+
+      <nav class="nav flex-column gap-1">
+        {% for resource in resources %}
+          <a
+            href="{{ resource.url }}"
+            class="nav-link px-2 py-1 rounded
+              {% if request.path == resource.url %}
+                active bg-light fw-semibold
+              {% else %}
+                text-dark
+              {% endif %}">
+            {{ resource.name }}
+          </a>
+        {% else %}
+          <span class="text-muted small">Нет доступных ресурсов</span>
+        {% endfor %}
+      </nav>
+    </aside>
+
+    <!-- Основная область -->
+    <main class="col-12 col-md-9 col-lg-10 p-4">
+      {% block content %}
+      <!-- Контент страницы -->
+      {% endblock %}
+    </main>
+
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+
+<!-- {% block title %}
+{{ title }}
+{% endblock %} -->
+
+{% block styles %}
+{{ super() }}
+<style>
+    tr[data-href] {
+        cursor: pointer;
+    }
+
+    tr .row-actions {
+        visibility: hidden;
+        white-space: nowrap;
+    }
+
+    tr:hover .row-actions {
+        visibility: visible;
+    }
+
+    .edit-row {
+        background-color: #f8f9fa;
+    }
+
+    .table-row {
+        cursor: pointer;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Список элементов</h4>
+
+    <!-- Кнопка создания -->
+    <a href="{{ create_item_url }}" class="btn btn-sm btn-primary">
+        + Создать
+    </a>
+</div>
+
+<!-- Выбор количества строк -->
+<form method="get" class="mb-3">
+    <label class="form-label small text-muted">
+        Строк на странице
+    </label>
+    <select name="per_page" class="form-select form-select-sm" style="width: auto;" onchange="this.form.submit()">
+        {% for n in [10, 25, 50, 100] %}
+        <option value="{{ n }}" {% if per_page==n %}selected{% endif %}>
+            {{ n }}
+        </option>
+        {% endfor %}
+    </select>
+</form>
+
+<div class="table-responsive bg-white rounded shadow-sm">
+    <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+            <tr>
+                {% block table_headers %}
+                <!-- {% for header in table_headers %}
+                <th>{{ header }}</th>
+                {% endfor %} -->
+                {% endblock %}
+                <th class="text-end"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% block table_body %}
+            <!-- {% for row in rows %} -->
+
+            <!-- Основная строка -->
+            <!-- <tr class="table-row" data-id="{{ row.id }}">
+                {% block table_data %} -->
+                <!-- {% for data in row.data %}
+                <td>{{ data }}</td>
+                {% endfor %} -->
+                <!-- {% endblock %}
+                <td class="text-end">
+                    <button class="btn btn-sm btn-link edit-btn">✏️</button>
+                    <button class="btn btn-sm btn-link text-danger delete-btn">🗑️</button>
+                </td>
+            </tr> -->
+
+            <!-- Раскрывающаяся строка -->
+            <!-- <tr class="edit-row d-none" id="edit-{{ row.id }}">
+                <td colspan="4">
+                    <form class="edit-form" data-id="{{ row.id }}">
+                        <div class="row g-2 mb-2">
+                            {% block table_details %} -->
+                            <!-- {% for detail in row.details %}
+                            <div class="col-md-6">
+                                <label class="form-label small">{{ detail.name }}</label>
+                                <input class="form-control form-control-sm" name="name" value="{{ detail.value }}">
+                            </div>
+                            {% endfor %} -->
+                            <!-- {% endblock %}
+                        </div>
+
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-sm btn-success">
+                                Сохранить
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary cancel-btn">
+                                Отмена
+                            </button>
+                        </div>
+                    </form>
+                </td>
+            </tr>
+
+            {% endfor %} -->
+            {% endblock %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Пагинация -->
+<nav class="mt-3">
+    <ul class="pagination pagination-sm">
+
+        {% if page > 0 %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ page - 1 }}&per_page={{ per_page }}">
+                ←
+            </a>
+        </li>
+        {% endif %}
+
+        {% for p in range(0, total_pages) %}
+        <li class="page-item {% if p == page %}active{% endif %}">
+            <a class="page-link" href="?page={{ p }}&per_page={{ per_page }}">
+                {{ p + 1 }}
+            </a>
+        </li>
+        {% endfor %}
+
+        {% if page < total_pages - 1 %} <li class="page-item">
+            <a class="page-link" href="?page={{ page + 1 }}&per_page={{ per_page }}">
+                →
+            </a>
+            </li>
+        {% endif %}
+
+    </ul>
+</nav>
+
+<!-- Клик по строке -->
+<script>
+    document.querySelectorAll('tr[data-href]').forEach(row => {
+        row.addEventListener('click', () => {
+            window.location = row.dataset.href;
+        });
+    });
+</script>
+
+<script>
+document.addEventListener('click', function (e) {
+
+  const editBtn = e.target.closest('.edit-btn');
+  const tableRow = e.target.closest('.table-row');
+
+  if (!editBtn && !tableRow) return;
+
+  const tr = (editBtn || tableRow).closest('tr');
+  const id = tr.dataset.id;
+  const editRow = document.getElementById(`edit-${id}`);
+
+  const isOpen = !editRow.classList.contains('d-none');
+
+  // закрываем все остальные
+  closeAllEditRows(id);
+
+  // если текущая была закрыта — открываем
+  if (!isOpen) {
+    editRow.classList.remove('d-none');
+  }
+});
+</script>
+
+<script>
+function closeAllEditRows(exceptId = null) {
+  document.querySelectorAll('.edit-row').forEach(row => {
+    if (!exceptId || row.id !== `edit-${exceptId}`) {
+      row.classList.add('d-none');
+    }
+  });
+}
+</script>
+
+<script>
+document.addEventListener('click', function (e) {
+  if (!e.target.classList.contains('cancel-btn')) return;
+
+  const editRow = e.target.closest('.edit-row');
+  editRow.classList.add('d-none');
+});
+</script>
+
+<script>
+document.addEventListener('submit', async function (e) {
+  if (!e.target.classList.contains('edit-form')) return;
+
+  e.preventDefault();
+
+  const form = e.target;
+  const id = form.dataset.id;
+  const formData = new FormData(form);
+
+  const response = await fetch(`{{ api_path }}/${id}`, {
+    method: 'PATCH',
+    body: formData
+  });
+
+  if (response.ok) {
+    // обновляем данные в строке
+    {% block update_form %}
+    // const row = document.querySelector(`tr[data-id="${id}"]`);
+    // row.children[1].innerText = formData.get('name');
+    // row.children[2].innerText = formData.get('status');
+
+    // form.closest('.edit-row').classList.add('d-none');
+    {% endblock %}
+  }
+});
+</script>
+
+<script>
+document.addEventListener('click', async function (e) {
+  if (!e.target.classList.contains('delete-btn')) return;
+
+  const row = e.target.closest('tr');
+  const id = row.dataset.id;
+
+  if (!confirm('Удалить запись? Это приведёт к удалению связанных записей')) return;
+
+  const response = await fetch(`{{ api_path }}/${id}`, {
+    method: 'DELETE'
+  });
+
+  if (response.ok) {
+    const editRow = document.getElementById(`edit-${id}`);
+    editRow.remove();
+    row.remove();
+  }
+});
+</script>
+
+{% endblock %}

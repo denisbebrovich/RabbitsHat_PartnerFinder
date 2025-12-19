@@ -1,0 +1,80 @@
+{% extends "table.html" %}
+
+{% block title %}
+Компании
+{% endblock %}
+
+{% block table_headers %}
+<th>ID</th>
+<th>External ID</th>
+<th>Name</th>
+{% endblock %}
+
+{% block table_body %}
+{% for row in rows %}
+
+<!-- Основная строка -->
+<tr class="table-row" data-id="{{ row.id }}">
+
+    <td>{{ row.data.id }}</td>
+    <td>{{ row.data.external_id }}</td>
+    <td>{{ row.data.name }}</td>
+
+    <td class="text-end">
+        <button class="btn btn-sm btn-link edit-btn">✏️</button>
+        <button class="btn btn-sm btn-link text-danger delete-btn">🗑️</button>
+    </td>
+</tr>
+
+<!-- Раскрывающаяся строка -->
+<tr class="edit-row d-none" id="edit-{{ row.id }}">
+    <td colspan="4">
+        <form class="edit-form" data-id="{{ row.id }}">
+            <div class="row g-2 mb-2">
+                <div class="col-md-6">
+                    <label class="form-label small">External ID</label>
+                    <input class="form-control form-control-sm" name="external_id" value="{{ row.data.external_id }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small">Имя</label>
+                    <input class="form-control form-control-sm" name="name" value="{{ row.data.name }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small">ИТ компания</label>
+                    <input class="form-control form-control-sm" name="is_it_company" value="{{ row.data.is_it_company }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small">Регион</label>
+                    <input class="form-control form-control-sm" name="region" value="{{ row.data.region }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small">Описание</label>
+                    <input class="form-control form-control-sm" name="description" value="{{ row.data.description }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small">Адрес сайта</label>
+                    <input class="form-control form-control-sm" name="site_url" value="{{ row.data.site_url }}">
+                </div>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-sm btn-success">
+                    Сохранить
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary cancel-btn">
+                    Отмена
+                </button>
+            </div>
+        </form>
+    </td>
+</tr>
+
+{% endfor %}
+{% endblock %}
+
+{% block update_form %}
+const row = document.querySelector(`tr[data-id="${id}"]`);
+row.children[1].innerText = formData.get('external_id');
+row.children[2].innerText = formData.get('name');
+form.closest('.edit-row').classList.add('d-none');
+{% endblock %}
